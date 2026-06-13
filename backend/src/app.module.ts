@@ -1,0 +1,32 @@
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
+import { WsiReaderModule } from './modules/wsi-reader/wsi-reader.module';
+import { TritonClientModule } from './modules/triton-client/triton-client.module';
+import { StitchingModule } from './modules/stitching/stitching.module';
+import { OmeTiffModule } from './modules/ome-tiff/ome-tiff.module';
+import { StreamingModule } from './modules/streaming/streaming.module';
+import { TaskManagementModule } from './modules/task-management/task-management.module';
+import { WebsocketModule } from './modules/websocket/websocket.module';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['.env', '.env.development'],
+    }),
+    ScheduleModule.forRoot(),
+    WsiReaderModule,
+    TritonClientModule,
+    StitchingModule,
+    OmeTiffModule,
+    StreamingModule,
+    TaskManagementModule,
+    WebsocketModule,
+  ],
+  controllers: [AppController],
+  providers: [AppService],
+})
+export class AppModule {}
