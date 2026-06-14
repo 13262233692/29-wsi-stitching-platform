@@ -29,6 +29,38 @@ export interface WsCompletePayload {
   timestamp: number;
 }
 
+export interface WsCellAnalysisPayload {
+  taskId: string;
+  tile_index: [number, number];
+  abnormal_count: number;
+  total_count: number;
+  anomaly_score: number;
+  cells: Array<{
+    centroid_x: number;
+    centroid_y: number;
+    bbox_x: number;
+    bbox_y: number;
+    bbox_w: number;
+    bbox_h: number;
+    circularity: number;
+    aspect_ratio: number;
+    roughness: number;
+    reasons: string[];
+  }>;
+  timestamp: number;
+}
+
+export interface WsNucleusAnalysisCompletePayload {
+  taskId: string;
+  totalNuclei: number;
+  abnormalCount: number;
+  milvusSaved: number;
+  maxAnomaly: number;
+  avgAnomaly: number;
+  durationMs: number;
+  timestamp: number;
+}
+
 class WsiWebSocketClient {
   private socket: Socket | null = null;
   connected = ref(false);
@@ -71,6 +103,8 @@ class WsiWebSocketClient {
   on(event: 'task_progress', handler: (p: WsProgressPayload) => void): void;
   on(event: 'task_complete', handler: (p: WsCompletePayload) => void): void;
   on(event: 'task_error', handler: (p: { taskId: string; error: string }) => void): void;
+  on(event: 'cell_analysis', handler: (p: WsCellAnalysisPayload) => void): void;
+  on(event: 'nucleus_analysis_complete', handler: (p: WsNucleusAnalysisCompletePayload) => void): void;
   on(event: 'ome_header', handler: (p: any) => void): void;
   on(event: string, handler: (...args: any[]) => void) {
     this.socket?.on(event, handler);

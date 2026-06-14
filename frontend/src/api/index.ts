@@ -56,3 +56,48 @@ export function getTritonStatus() {
 export function downloadTaskResult(taskId: string) {
   window.open(`/api/streaming/${taskId}/download`, '_blank');
 }
+
+// ---------- 细胞形态学分析 API ----------
+export function getCellAnalysisStatus() {
+  return request.get<any, {
+    milvus: {
+      available: boolean;
+      host: string;
+      collectionName: string;
+      vectorDim: number;
+    };
+  }>('/cell-analysis/status');
+}
+
+export function listAbnormalCells(taskId: string, limit = 500) {
+  return request.get<any, { total: number; items: NucleusAbnormalCell[] }>(
+    `/cell-analysis/tasks/${taskId}/abnormal`,
+    { params: { limit } },
+  );
+}
+
+export function searchSimilarCells(
+  taskId: string,
+  vector: number[],
+  options?: { topK?: number; global?: boolean },
+) {
+  return request.post<any, { results: (NucleusAbnormalCell & { distance: number })[] }>(
+    `/cell-analysis/tasks/${taskId}/search-similar`,
+    { vector, topK: options?.topK || 20, global: options?.global || false },
+  );
+}
+
+export function analyzeSingleTile(payload: {
+  imageData: string;
+  tileRow?: number;
+  tileCol?: number;
+  tileSize?: number;
+  overlap?: number;
+  scaleFactor?: number;
+}) {
+  return request.post<any, NucleusAnalysisWorkerResponse>(
+    '/cell-analysis/analyze',
+    payload,
+  );
+}
+

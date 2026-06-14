@@ -103,4 +103,40 @@ export class WsiStreamingGateway
   broadcastGlobal(event: string, payload: any) {
     this.server.emit(event, { ...payload, timestamp: Date.now() });
   }
+
+  sendTaskStatus(taskId: string, extra: Record<string, any> = {}) {
+    this.server.to(`task:${taskId}`).emit('task_status', {
+      taskId,
+      ...extra,
+      timestamp: Date.now(),
+    });
+  }
+
+  sendCellAnalysis(
+    taskId: string,
+    payload: {
+      tile_index: [number, number];
+      abnormal_count: number;
+      total_count: number;
+      anomaly_score: number;
+      cells: Array<{
+        centroid_x: number;
+        centroid_y: number;
+        bbox_x: number;
+        bbox_y: number;
+        bbox_w: number;
+        bbox_h: number;
+        circularity: number;
+        aspect_ratio: number;
+        roughness: number;
+        reasons: string[];
+      }>;
+    },
+  ) {
+    this.server.to(`task:${taskId}`).emit('cell_analysis', {
+      taskId,
+      ...payload,
+      timestamp: Date.now(),
+    });
+  }
 }

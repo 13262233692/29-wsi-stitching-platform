@@ -11,24 +11,28 @@ import { StreamingModule } from './modules/streaming/streaming.module';
 import { TaskManagementModule } from './modules/task-management/task-management.module';
 import { WebsocketModule } from './modules/websocket/websocket.module';
 import { WorkerPoolModule } from './modules/worker-pool/worker-pool.module';
-import { wsiConfig, tritonConfig, streamingConfig } from './config';
+import { MilvusModule } from './modules/milvus/milvus.module';
+import { CellAnalysisModule } from './modules/cell-analysis/cell-analysis.module';
+import { wsiConfig, tritonConfig, streamingConfig, milvusConfig } from './config';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [wsiConfig, tritonConfig, streamingConfig],
+      load: [wsiConfig, tritonConfig, streamingConfig, milvusConfig],
       envFilePath: ['.env', '.env.development'],
     }),
     ScheduleModule.forRoot(),
     WorkerPoolModule,
+    MilvusModule,
     WsiReaderModule,
     TritonClientModule,
     StitchingModule,
     OmeTiffModule,
     StreamingModule,
-    TaskManagementModule,
     WebsocketModule,
+    CellAnalysisModule,
+    TaskManagementModule,
   ],
   controllers: [AppController],
   providers: [AppService],

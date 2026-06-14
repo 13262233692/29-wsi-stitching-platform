@@ -214,6 +214,226 @@ function generateGaussianWeight(tileH, tileW, overlap, sigmaScale = 0.3) {
   return w;
 }
 
+// ---------- 细胞核形态学分析 (Worker 中运行，不阻塞 Event Loop) ----------
+function otsuThreshold(hist) {
+  let sum = 0;
+  for (let i = 0; i < 256; i++) sum += i * hist[i];
+  let wB = 0, sumB = 0, maxVar = 0, threshold = 0;
+  const total = hist.reduce((a, b) => a + b, 0);
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t];
+    if (wB === 0) continue;
+    const wF = total - wB;
+    if (wF === 0) break;
+    sumB += t * hist[t];
+    const mB = sumB / wB;
+    const mF = (sum - sumB) / wF;
+    const between = wB * wF * (mB - mF) * (mB - mF);
+    if (between > maxVar) { maxVar = between; threshold = t; }
+  }
+  return threshold;
+}
+
+function connectedComponents(binary, w, h) {
+  const labels = new Uint32Array(w * h);
+  const parent = [0];
+  let nextId = 1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      if (!binary[i]) continue;
+      const nbrs = [];
+      if (y > 0 && labels[i - w]) nbrs.push(labels[i - w]);
+      if (x > 0 && labels[i - 1]) nbrs.push(labels[i - 1]);
+      if (nbrs.length === 0) {
+        labels[i] = nextId;
+        parent.push(nextId);
+        nextId++;
+      } else {
+        let root = nbrs[0];
+        while (parent[root] !== root) { parent[root] = parent[parent[root]]; root = parent[root]; }
+        labels[i] = root;
+        for (const n of nbrs) {
+          let r = n;
+          while (parent[r] !== r) { parent[r] = parent[parent[r]]; r = parent[r]; }
+          if (r !== root) parent[r] = root;
+        }
+      }
+    }
+  }
+  for (let i = 0; i < w * h; i++) {
+    if (labels[i]) {
+      let r = labels[i];
+      while (parent[r] !== r) r = parent[r];
+      labels[i] = r;
+    }
+  }
+  return labels;
+}
+
+function extractRegionProperties(labels, w, h, rgba, offsetX, offsetY) {
+  const regions = new Map();
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const id = labels[y * w + x];
+      if (!id) continue;
+      let r = regions.get(id);
+      if (!r) { r = { id, xs: [], ys: [], pixels: [], sumI: 0, minX: x, maxX: x, minY: y, maxY: y }; regions.set(id, r); }
+      r.xs.push(x); r.ys.push(y);
+      const pi = (y * w + x) * 4;
+      r.sumI += 0.299 * rgba[pi] + 0.587 * rgba[pi + 1] + 0.114 * rgba[pi + 2];
+      if (x < r.minX) r.minX = x;
+      if (x > r.maxX) r.maxX = x;
+      if (y < r.minY) r.minY = y;
+      if (y > r.maxY) r.maxY = y;
+    }
+  }
+  const result = [];
+  let cid = 0;
+  for (const r of regions.values()) {
+    const n = r.xs.length;
+    if (n < 40) continue;
+    const area = n;
+    // 周长估算: 边界像素 4-邻域变化 + 修正
+    const maskSet = new Set(r.xs.map((x, i) => r.ys[i] * w + x));
+    let perimeter = 0;
+    for (let i = 0; i < n; i++) {
+      const x = r.xs[i], y = r.ys[i];
+      const idx = y * w + x;
+      if (!maskSet.has(idx - w)) perimeter++;
+      if (!maskSet.has(idx + w)) perimeter++;
+      if (!maskSet.has(idx - 1)) perimeter++;
+      if (!maskSet.has(idx + 1)) perimeter++;
+    }
+    perimeter = Math.max(perimeter, 4);
+    const correctedP = perimeter * 0.886;
+    // 质心
+    let sx = 0, sy = 0;
+    for (let i = 0; i < n; i++) { sx += r.xs[i]; sy += r.ys[i]; }
+    const cx = sx / n + offsetX, cy = sy / n + offsetY;
+    // 协方差 -> 长短轴
+    let sxx = 0, syy = 0, sxy = 0;
+    for (let i = 0; i < n; i++) {
+      const dx = r.xs[i] - sx / n, dy = r.ys[i] - sy / n;
+      sxx += dx * dx; syy += dy * dy; sxy += dx * dy;
+    }
+    sxx /= n; syy /= n; sxy /= n;
+    const trace = sxx + syy;
+    const det = sxx * syy - sxy * sxy;
+    const disc = Math.sqrt(Math.max(0, trace * trace / 4 - det));
+    const l1 = trace / 2 + disc;
+    const l2 = Math.max(0, trace / 2 - disc);
+    const major = 2 * Math.sqrt(Math.max(l1, l2) * 2.0);
+    const minor = 2 * Math.sqrt(Math.max(0, Math.min(l1, l2)) * 2.0);
+    const orientation = 0.5 * Math.atan2(2 * sxy, sxx - syy);
+    // 圆面积比
+    const circularity = (4 * Math.PI * area) / (correctedP * correctedP);
+    // 长短轴比
+    const aspect = minor > 0 ? major / minor : 1;
+    // 面凸性 (近似: bbox 面积与真实面积比的反向)
+    const bboxArea = (r.maxX - r.minX + 1) * (r.maxY - r.minY + 1);
+    const solidity = Math.min(1, area / bboxArea * 1.6);
+    // 边界粗糙度 (周长 / 椭圆等效周长)
+    const equivEllipseP = Math.PI * (1.5 * (major + minor) - Math.sqrt(major * minor));
+    const roughness = correctedP / Math.max(equivEllipseP, 4);
+    const meanI = r.sumI / n;
+    // 异常判定
+    const reasons = [];
+    if (circularity < 0.55) reasons.push('low_circularity');
+    if (aspect > 2.2) reasons.push('high_aspect_ratio');
+    if (roughness > 1.35) reasons.push('high_roughness');
+    if (solidity < 0.55) reasons.push('low_solidity');
+    if (area < 150 || area > 15000) reasons.push('abnormal_size');
+    const isAbnormal = reasons.length >= 2;
+    // 128-dim 特征向量
+    const base = [
+      area / 5000, correctedP / 500, Math.min(1, circularity),
+      Math.min(1, aspect / 3), solidity, Math.min(1, roughness / 2),
+      major / 200, minor / 100, meanI / 255, orientation / Math.PI,
+    ];
+    const fv = [];
+    for (const v of base) fv.push(Math.tanh(v));
+    for (const v of base) fv.push(Math.tanh(v * v));
+    for (const v of base) fv.push(Math.tanh(v * v * v));
+    for (const v of base) fv.push(Math.sin(v * Math.PI));
+    for (const v of base) fv.push(Math.cos(v * Math.PI));
+    for (let i = 0; i < base.length; i++)
+      for (let j = i + 1; j < base.length; j++)
+        fv.push(Math.tanh(base[i] * base[j]));
+    while (fv.length < 128) fv.push(0);
+    const feats = fv.slice(0, 128);
+    let norm = 0; for (let i = 0; i < 128; i++) norm += feats[i] * feats[i];
+    norm = Math.sqrt(norm) + 1e-8;
+    for (let i = 0; i < 128; i++) feats[i] = feats[i] / norm;
+
+    result.push({
+      cell_id: cid++,
+      centroid_x: cx, centroid_y: cy,
+      bbox_x: r.minX + offsetX, bbox_y: r.minY + offsetY,
+      bbox_w: r.maxX - r.minX + 1, bbox_h: r.maxY - r.minY + 1,
+      area, perimeter: correctedP, convex_perimeter: equivEllipseP,
+      major_axis: major, minor_axis: Math.max(minor, 1),
+      orientation,
+      circularity: Math.min(1, circularity),
+      aspect_ratio: aspect,
+      solidity, roughness,
+      mean_intensity: meanI,
+      is_abnormal: isAbnormal,
+      abnormal_reasons: reasons,
+      feature_vector: feats,
+    });
+  }
+  return result;
+}
+
+function analyzeCellInstances(payload) {
+  const t0 = Date.now();
+  const { imageData, tile_row = 0, tile_col = 0, tile_size = 512, overlap = 32, scale_factor = 4 } = payload;
+  const decoded = base64ToRgba(imageData);
+  const { width: w, height: h, data: rgba } = decoded;
+  // 灰度化 + Otsu (细胞核通常染色深)
+  const gray = new Uint8Array(w * h);
+  const hist = new Uint32Array(256);
+  for (let i = 0; i < w * h; i++) {
+    const v = Math.round(0.299 * rgba[i * 4] + 0.587 * rgba[i * 4 + 1] + 0.114 * rgba[i * 4 + 2]);
+    gray[i] = v;
+    hist[v]++;
+  }
+  const thr = otsuThreshold(hist);
+  // 反向: 暗色核为前景
+  const fg = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) fg[i] = gray[i] < thr ? 1 : 0;
+  const labels = connectedComponents(fg, w, h);
+  const offsetX = tile_col * (tile_size - overlap) * scale_factor;
+  const offsetY = tile_row * (tile_size - overlap) * scale_factor;
+  const nuclei = extractRegionProperties(labels, w, h, rgba, offsetX, offsetY);
+  const abnormalCells = nuclei.filter((n) => n.is_abnormal);
+  const abnormal = abnormalCells.length;
+  const pixelUm = 0.25;
+  const areaMm2 = (w * h * pixelUm * pixelUm) / 1e6;
+  const density = nuclei.length / Math.max(areaMm2, 1e-9);
+  let anomaly = 0;
+  if (nuclei.length > 0) {
+    const ratio = abnormal / nuclei.length;
+    const meanCirc = abnormalCells.length > 0
+      ? abnormalCells.reduce((s, n) => s + (1 - n.circularity), 0) / abnormalCells.length
+      : 0;
+    anomaly = Math.min(1, 0.5 * ratio + 0.25 * Math.min(1, density / 8000) + 0.25 * meanCirc);
+  }
+  return {
+    tile_index: [tile_row, tile_col],
+    tile_offset: [offsetX, offsetY],
+    tile_size: w,
+    scale_factor,
+    nuclei,
+    abnormal_count: abnormal,
+    total_count: nuclei.length,
+    density,
+    anomaly_score: anomaly,
+    durationMs: Date.now() - t0,
+  };
+}
+
 // ---------- 高斯混合拼接 (核心) ----------
 function blendTiles(payload) {
   const t0 = Date.now();
@@ -335,6 +555,8 @@ function handle(kind, payload) {
       const { width, height, rgbaBuffer } = payload;
       return { imageData: rgbaToPngBase64(width, height, rgbaBuffer) };
     }
+    case 'analyze_cell_instances':
+      return analyzeCellInstances(payload);
     default:
       throw new Error(`Unknown task kind: ${kind}`);
   }
@@ -370,4 +592,5 @@ module.exports = {
   blendTiles,
   base64ToRgba,
   rgbaToPngBase64,
+  analyzeCellInstances,
 };

@@ -38,7 +38,8 @@
     "python-shell": "^5.0.0",
     "uuid": "^9.0.0",
     "tiff": "^5.0.3",
-    "winston": "^3.10.0"
+    "winston": "^3.10.0",
+    "@zilliz/milvus2-sdk-node": "^2.4.0"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",

@@ -6,6 +6,7 @@ import { TritonClientModule } from '../triton-client/triton-client.module';
 import { StitchingModule } from '../stitching/stitching.module';
 import { OmeTiffModule } from '../ome-tiff/ome-tiff.module';
 import { WebsocketModule } from '../websocket/websocket.module';
+import { CellAnalysisModule } from '../cell-analysis/cell-analysis.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { WebsocketModule } from '../websocket/websocket.module';
     StitchingModule,
     OmeTiffModule,
     WebsocketModule,
+    CellAnalysisModule,
   ],
   controllers: [TaskManagementController],
   providers: [TaskManagementService],

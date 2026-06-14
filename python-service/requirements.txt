@@ -19,3 +19,7 @@ imagecodecs>=2023.3.16
 
 # 工具
 tqdm>=4.65.0
+
+# 形态学分析
+opencv-python>=4.8.0
+scikit-image>=0.21.0

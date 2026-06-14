@@ -1,4 +1,4 @@
-import { IsString, IsInt, IsOptional, IsEnum, Min, Max } from 'class-validator';
+import { IsString, IsInt, IsOptional, IsEnum, Min, Max, IsBoolean, IsArray, IsObject } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export enum TaskState {
@@ -7,9 +7,20 @@ export enum TaskState {
   SUPER_RESOLVING = 'super_resolving',
   STITCHING = 'stitching',
   SAVING = 'saving',
+  ANALYZING = 'analyzing',
   COMPLETED = 'completed',
   FAILED = 'failed',
   CANCELLED = 'cancelled',
+}
+
+export interface NucleusAnalysisStatus {
+  enabled: boolean;
+  totalTiles: number;
+  analyzedTiles: number;
+  totalNuclei: number;
+  abnormalCount: number;
+  milvusSaved: number;
+  abnormalCells: any[];
 }
 
 export class CreateTaskDto {
@@ -39,6 +50,11 @@ export class CreateTaskDto {
   @IsOptional()
   @IsString()
   modelName?: string;
+
+  @ApiPropertyOptional({ description: '是否启用细胞核形态学分析 (默认 true)' })
+  @IsOptional()
+  @IsBoolean()
+  enableNucleusAnalysis?: boolean;
 }
 
 export class TaskStatus {
@@ -92,6 +108,9 @@ export class TaskStatus {
 
   @ApiProperty({ description: '已处理切片数' })
   processedTiles?: number;
+
+  @ApiProperty({ description: '细胞核分析状态' })
+  nucleusAnalysis?: NucleusAnalysisStatus;
 }
 
 export class TaskQueryDto {
