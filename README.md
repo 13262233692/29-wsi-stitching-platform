@@ -41,11 +41,16 @@
 │   │   ├── modules/
 │   │   │   ├── wsi-reader/     # WSI 滑窗读取 (OpenSlide 封装)
 │   │   │   ├── triton-client/  # Triton 超分推理客户端
-│   │   │   ├── stitching/      # 高斯混合拼接
+│   │   │   ├── stitching/      # 高斯混合拼接 (调用 worker-pool)
 │   │   │   ├── ome-tiff/       # OME-TIFF 流式组装
 │   │   │   ├── streaming/      # HTTP 流式下载
 │   │   │   ├── task-management/ # 任务管理与流程编排
-│   │   │   └── websocket/      # Socket.IO 实时推送
+│   │   │   ├── websocket/      # Socket.IO 实时推送
+│   │   │   └── worker-pool/    # ⭐ Worker Threads 线程池 + 高斯算法 (Event Loop 隔离)
+│   │   │       ├── worker-pool.service.ts
+│   │   │       ├── worker-pool.types.ts
+│   │   │       ├── stitching.worker.js        # 独立 V8 Isolate 内的 CPU 密集计算
+│   │   │       └── test.worker.standalone.js  # Event Loop 阻塞验证脚本
 │   │   └── ...
 │   └── package.json
 ├── python-service/             # Python 算法服务

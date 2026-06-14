@@ -10,14 +10,18 @@ import { OmeTiffModule } from './modules/ome-tiff/ome-tiff.module';
 import { StreamingModule } from './modules/streaming/streaming.module';
 import { TaskManagementModule } from './modules/task-management/task-management.module';
 import { WebsocketModule } from './modules/websocket/websocket.module';
+import { WorkerPoolModule } from './modules/worker-pool/worker-pool.module';
+import { wsiConfig, tritonConfig, streamingConfig } from './config';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      load: [wsiConfig, tritonConfig, streamingConfig],
       envFilePath: ['.env', '.env.development'],
     }),
     ScheduleModule.forRoot(),
+    WorkerPoolModule,
     WsiReaderModule,
     TritonClientModule,
     StitchingModule,
